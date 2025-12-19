@@ -1,28 +1,40 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { RepoAnalysisResult, GithubFile } from "../types";
+import { RepoAnalysisResult } from "../types";
+import { LocalFinding } from "./scannerService";
 
 export const geminiService = {
-  async analyzeRepo(repoName: string, files: GithubFile[]): Promise<RepoAnalysisResult> {
+  async analyzeWithContext(repoName: string, localFindings: LocalFinding[]): Promise<RepoAnalysisResult> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const fileListStr = files.map(f => f.path).join('\n');
+    // Construct context from local findings
+    const contextStr = localFindings.map(f => `
+      File: ${f.fileName}
+      Heuristic Suggestion: ${f.detectedPattern}
+      Confidence: ${f.confidence}
+      Reason: ${f.reason}
+      Code Snippet:
+      ${f.codeSnippet}
+    `).join('\n---\n');
 
     const prompt = `
-      Analyze the following file structure of the GitHub repository "${repoName}". 
-      Identify areas where common Design Patterns (Creational, Structural, or Behavioral) should be applied to improve the architecture.
+      You are a senior Software Architect. I have performed a local heuristic scan on the GitHub repository "${repoName}".
+      The following areas were identified as potentially needing Design Patterns based on actual code signatures.
       
-      Since you only have the file names, use your deep knowledge of common software architectures (e.g., MVC, Clean Architecture, Hooks pattern in React, Service Layer in Node/Spring) to infer where improvements are needed based on file naming conventions and directory structures.
+      YOUR TASK:
+      1. Validate these findings.
+      2. For each valid finding, provide a detailed "Before" and "After" code transformation.
+      3. List architectural benefits and potential drawbacks (complexity overhead).
       
-      Files:
-      ${fileListStr}
+      Local Scan Context:
+      ${contextStr}
     `;
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: prompt,
       config: {
-        systemInstruction: "You are a senior software architect with 20+ years of experience in Design Patterns. Your goal is to find architectural flaws in repositories and suggest patterns like Factory, Strategy, Observer, Decorator, etc. Provide high-quality code snippets in the relevant language.",
+        systemInstruction: "You are an elite developer. Your responses MUST be in JSON format. Provide high-quality refactoring examples that follow SOLID principles. Ensure the 'codeBefore' snippet accurately represents the mess found in the context, and 'codeAfter' shows a clean pattern implementation.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -35,10 +47,10 @@ export const geminiService = {
                 type: Type.OBJECT,
                 properties: {
                   patternName: { type: Type.STRING },
-                  targetFile: { type: Type.STRING, description: "The file or module where the pattern should be applied" },
+                  targetFile: { type: Type.STRING },
                   reasoning: { type: Type.STRING },
-                  codeBefore: { type: Type.STRING, description: "A snippet showing the problematic code structure" },
-                  codeAfter: { type: Type.STRING, description: "A snippet showing how it looks after applying the pattern" },
+                  codeBefore: { type: Type.STRING },
+                  codeAfter: { type: Type.STRING },
                   benefits: { type: Type.ARRAY, items: { type: Type.STRING } },
                   drawbacks: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
