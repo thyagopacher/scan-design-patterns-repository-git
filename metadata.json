@@ -1,0 +1,5 @@
+{
+  "name": "Design Pattern Analyzer",
+  "description": "An intelligent tool that analyzes Git repositories to suggest architectural improvements using Design Patterns, providing before/after code examples and trade-offs.",
+  "requestFramePermissions": []
+}
